@@ -1,0 +1,220 @@
+#!/usr/bin/env node
+'use strict';
+
+const Liftoff   = require('liftoff');
+const interpret = require('interpret');
+const program = require('commander');
+const readline = require('readline');
+const argv = require('minimist')(process.argv.slice(2));
+const chalk = require('chalk');
+const _ = require('lodash');
+const util = require('util');
+const Promise = require('bluebird');
+const fs = Promise.promisifyAll(require('fs'));
+const mkdirp = require('mkdirp-promise');
+const co = require('co');
+const rp = require('request-promise');
+const ejs = require('ejs');
+const fse = require('fs-extra');
+
+function exitWithError(error) {
+  var text = error;
+  if(error instanceof Error){
+    text = `[${error.name}]: ${error.message}\n${error.stack}`;
+  }
+  console.error(chalk.red(text));
+  process.exit(1);
+}
+
+function exitWithSuccess(text) {
+  if(text) {
+    console.log(text);
+  }
+  process.exit(0);
+}
+
+function render(path, params) {
+  return  co(function*(){
+    const content = yield fs.readFileAsync(path, {encoding: 'utf8'});
+    return ejs.render(content, params || {});
+  });
+}
+
+function copyTemplateWith(tplPath, dist, params){
+  return  co(function*(){
+    const packageSwift = yield render(tplPath, params);
+    return fs.writeFileAsync(dist, packageSwift);
+  });
+}
+
+function copy(src, dest){
+  return new Promise(function(resolve, reject){
+    fse.copy(src, dest, function(err){
+      if (err) {
+        return reject(err);
+      }
+      resolve();
+    });
+  });
+}
+
+function remove(path){
+  return new Promise(function(resolve, reject){
+    fse.remove(path, function(err){
+      if (err) {
+        return reject(err);
+      }
+      resolve();
+    });
+  });
+}
+
+function initialize(){
+  program
+    .version(require('../../package.json').version)
+  ;
+
+  program
+    .command('new <appName>')
+    .option('-p, --path [path]', 'The path for initializing Slimane application')
+    .option('-f, --with-fullstack', 'Fetch Slimane-Fullstack instead of Slimane')
+    .option('-o, --overwrite', 'OverWrite existing the project at the path')
+    .description('       Generate a new Slimane application')
+    .action(function(appName) {
+      var path = program.p || process.cwd();
+
+      if(!argv.o) {
+        try {
+            const stat = fs.statSync(`${path}/${appName}`);
+            let text = `${path}/${appName}/ is already existed.`;
+            exitWithSuccess(`${chalk.yellow(text)}\n\n${chalk.yellow("If you want to overwrite existing project, please add \`-o\` option")}`);
+        } catch(e) {}
+      }
+
+      co(function*(){
+        const repoName = argv.f ? "Slimane-Fullstack" : "Slimane";
+        const Slimane = argv.f ? "SlimaneFullstack" : "Slimane";
+        const repositoryUrl = `https://github.com/noppoMan/${repoName}.git`;
+
+        var options = {
+            uri: `https://api.github.com/repos/noppoMan/${repoName}/tags`,
+            headers: {
+              'User-Agent': 'Request-Promise'
+            },
+            json: true
+        };
+        const data = yield rp(options);
+
+        const versionStr = _.first(data).name;
+        const semanticsVersion = versionStr.split(".");
+        const majorVersion = semanticsVersion[0];
+        const minorVersion = semanticsVersion[1];
+
+        yield remove(`${path}/${appName}/`);
+
+        yield mkdirp(`${path}/${appName}/Sources`);
+
+        options = {
+            uri: `https://raw.githubusercontent.com/noppoMan/${repoName}/${versionStr}/.swift-version`,
+            headers: {
+              'User-Agent': 'Request-Promise'
+            }
+        };
+
+        yield fs.writeFileAsync(`${path}/${appName}/.swift-version`, yield rp(options));
+
+        yield copyTemplateWith(
+          __dirname + "/../../templates/Package.swift",
+          `${path}/${appName}/Package.swift`,
+          {
+            appName: appName,
+            repository: repositoryUrl,
+            majorVersion: majorVersion,
+            minorVersion: minorVersion
+          }
+        );
+
+        yield copyTemplateWith(
+          __dirname + "/../../templates/Sources/app.swift",
+          `${path}/${appName}/Sources/app.swift`,
+          {
+            Slimane: Slimane,
+            fullstack: argv.f,
+          }
+        );
+
+        yield copyTemplateWith(
+          __dirname + "/../../templates/Sources/main.swift",
+          `${path}/${appName}/Sources/main.swift`
+        );
+
+        yield copy(__dirname + "/../../resources/public", `${path}/${appName}/public`);
+        yield copy(__dirname + "/../../resources/Makefile", `${path}/${appName}/Makefile`);
+
+        if(argv.f) {
+          yield copy(__dirname + "/../../resources/views", `${path}/${appName}/views`);
+        }
+
+        const spawn = require('child_process').spawn;
+        const tree = spawn('tree', [`${path}/${appName}`]);
+        tree.stdout.on('data', (data) => {
+          console.log(`${data}`);
+        });
+
+        tree.stderr.on('data', (data) => {
+          console.log(`${data}`);
+        });
+
+        tree.on('close', (code) => {
+          console.log(chalk.cyan(`Successfully generated ${appName}`));
+        });
+      })
+      .catch(exitWithError);
+    });
+
+  program
+    .command('build')
+    .option('-o, --optimize', 'Equivalent to swift build release')
+    .description('       Build an application')
+    .action(function() {
+      const spawn = require('child_process').spawn;
+      var opts = argv.o ? [] : ["debug"];
+      const stdio = spawn('make', opts);
+
+      stdio.stdout.on('data', (data) => {
+        console.log(`${data}`);
+      });
+
+      stdio.stderr.on('data', (data) => {
+        console.log(`${data}`);
+      });
+    });
+
+  program
+    .command('run')
+    .option('-r, --release', 'Use the release build')
+    .description('       Launch an application')
+    .action(function() {
+      const spawn = require('child_process').spawn;
+      spawn(`.build/${argv.r ? "Release" : "Debug"}/MyApp`, [], { stdio: 'inherit' });
+    });
+
+  program.parse(process.argv);
+
+  if(argv._.length === 0 || !_.last(program.args)._name) {
+    program.help();
+  }
+}
+
+var cli = new Liftoff({
+  name: 'slimane',
+  extensions: interpret.jsVariants,
+  v8flags: require('v8flags')
+});
+
+cli.launch({
+  cwd: argv.cwd,
+  configPath: argv.knexfile,
+  require: argv.require,
+  completion: argv.completion
+}, initialize);
