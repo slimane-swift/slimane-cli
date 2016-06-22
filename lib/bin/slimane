@@ -69,6 +69,14 @@ function remove(path){
   });
 }
 
+function checkPackageSwift(){
+  try {
+    fs.statSync(process.cwd()+"/Package.swift");
+  } catch(e) {
+    exitWithError("Package.swift was not found on the current directory");
+  }
+}
+
 function initialize(){
   program
     .version(require('../../package.json').version)
@@ -177,6 +185,8 @@ function initialize(){
     .option('-o, --optimize', 'Equivalent to swift build release')
     .description('       Build an application')
     .action(function() {
+      checkPackageSwift();
+
       const spawn = require('child_process').spawn;
       var opts = argv.o ? [] : ["debug"];
       const stdio = spawn('make', opts);
@@ -195,8 +205,26 @@ function initialize(){
     .option('-r, --release', 'Use the release build')
     .description('       Launch an application')
     .action(function() {
+      checkPackageSwift();
+      const PackageSwift = `${fs.readFileSync(process.cwd()+"/Package.swift")}`;
+
+      var nameStartIndex = PackageSwift.indexOf("name:")+5;
+
+      var token = "";
+      while(true) {
+        const t = PackageSwift[nameStartIndex];
+        nameStartIndex+=1
+        if(t === ",") {
+          break;
+        } else {
+          token += t;
+        }
+      }
+
+      const PackageName = token.replace(/\s|\"/g, "");
+      const executable = `.build/${argv.r ? "Release" : "Debug"}/${PackageName}`;
       const spawn = require('child_process').spawn;
-      spawn(`.build/${argv.r ? "Release" : "Debug"}/MyApp`, [], { stdio: 'inherit' });
+      spawn(`${executable}`, [], { stdio: 'inherit' });
     });
 
   program.parse(process.argv);
