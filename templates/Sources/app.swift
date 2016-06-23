@@ -16,6 +16,45 @@ func launchApp() throws {
             Response(body: "Welcome to Slimane!")
         }
     }
+
+    // fibonacci with QWFuture and thrush
+    app.get("/fibo") { req, responder in
+        let promise = Promise<Int> { resolve, reject in
+            func fibonacci(_ number: Int) -> (Int) {
+                if number <= 1 {
+                    return number
+                } else {
+                    return fibonacci(number - 1) + fibonacci(number - 2)
+                }
+            }
+
+            let future = QWFuture<Int> { (completion: (() throws -> Int) -> ()) in
+                completion {
+                    fibonacci(10)
+                }
+            }
+
+            future.onSuccess { result in
+                resolve(result)
+            }
+
+            future.onFailure { error in
+                reject(error)
+            }
+        }
+
+        promise
+          .then { result in
+            responder {
+                Response(body: "result is \(result)")
+            }
+          }
+          .failure { error in
+              responder {
+                  Response(status: .internalServerError, body: "\(error)")
+              }
+          }
+    }
     <% } else { %>
     app.get("/") { req, responder in
         responder {
