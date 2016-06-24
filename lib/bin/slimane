@@ -16,7 +16,7 @@ const co = require('co');
 const rp = require('request-promise');
 const ejs = require('ejs');
 const fse = require('fs-extra');
-var nodetree = require('nodetree');
+const nodetree = require('nodetree');
 
 function exitWithError(error) {
   var text = error;
