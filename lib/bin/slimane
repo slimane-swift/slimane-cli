@@ -16,6 +16,7 @@ const co = require('co');
 const rp = require('request-promise');
 const ejs = require('ejs');
 const fse = require('fs-extra');
+var nodetree = require('nodetree');
 
 function exitWithError(error) {
   var text = error;
@@ -163,19 +164,7 @@ function initialize(){
           yield copy(__dirname + "/../../resources/views", `${path}/${appName}/views`);
         }
 
-        const spawn = require('child_process').spawn;
-        const tree = spawn('tree', [`${path}/${appName}`]);
-        tree.stdout.on('data', (data) => {
-          console.log(`${data}`);
-        });
-
-        tree.stderr.on('data', (data) => {
-          console.log(`${data}`);
-        });
-
-        tree.on('close', (code) => {
-          console.log(chalk.cyan(`Successfully generated ${appName}`));
-        });
+        nodetree(`${path}/${appName}`);
       })
       .catch(exitWithError);
     });
