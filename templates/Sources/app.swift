@@ -16,6 +16,13 @@ func launchApp() throws {
             Response(body: "Welcome to Slimane!")
         }
     }
+    <% } else { %>
+    app.get("/") { req, responder in
+        responder {
+            let render = Render(engine: MustacheViewEngine(templateData: ["name": "Slimane"]), path: "index")
+            return Response(custom: render)
+        }
+    }
 
     // fibonacci with QWFuture and thrush
     app.get("/fibo") { req, responder in
@@ -54,13 +61,6 @@ func launchApp() throws {
                   Response(status: .internalServerError, body: "\(error)")
               }
           }
-    }
-    <% } else { %>
-    app.get("/") { req, responder in
-        responder {
-            let render = Render(engine: MustacheViewEngine(templateData: ["name": "Slimane"]), path: "index")
-            return Response(custom: render)
-        }
     }
     <% } %>
 

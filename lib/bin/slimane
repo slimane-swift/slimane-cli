@@ -216,6 +216,52 @@ function initialize(){
       spawn(`${executable}`, [], { stdio: 'inherit' });
     });
 
+  program
+    .command('generate-vagrantfile')
+    .option('-f, --with-fullstack', 'Fetch Slimane-Fullstack instead of Slimane')
+    .option('-o, --out', 'The output path for Vagrantfile')
+    .description('       Generate a fresh Vagrantfile for Slimane')
+    .action(function() {
+      co(function*(){
+        const repoName = argv.f ? "Slimane-Fullstack" : "Slimane";
+        const Slimane = argv.f ? "SlimaneFullstack" : "Slimane";
+        const repositoryUrl = `https://github.com/noppoMan/${repoName}.git`;
+
+        const outDir = argv.o || process.cwd();
+
+        var options = {
+            uri: `https://api.github.com/repos/noppoMan/${repoName}/tags`,
+            headers: {
+              'User-Agent': 'Request-Promise'
+            },
+            json: true
+        };
+        const data = yield rp(options);
+
+        const versionStr = _.first(data).name;
+        const semanticsVersion = versionStr.split(".");
+        const majorVersion = semanticsVersion[0];
+        const minorVersion = semanticsVersion[1];
+
+        options = {
+            uri: `https://raw.githubusercontent.com/noppoMan/${repoName}/${versionStr}/.swift-version`,
+            headers: {
+              'User-Agent': 'Request-Promise'
+            }
+        };
+        const swiftVersion = yield rp(options);
+
+        yield copyTemplateWith(
+          __dirname + "/../../resources/Vagrantfile",
+          `${outDir}/Vagrantfile`,
+          {
+            swiftVersion: `${swiftVersion}`
+          }
+        );
+      })
+      .catch(exitWithError);
+    });
+
   program.parse(process.argv);
 
   if(argv._.length === 0 || !_.last(program.args)._name) {
