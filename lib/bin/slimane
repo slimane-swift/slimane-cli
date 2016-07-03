@@ -211,7 +211,7 @@ function initialize(){
       }
 
       const PackageName = token.replace(/\s|\"/g, "");
-      const executable = `.build/${argv.r ? "Release" : "Debug"}/${PackageName}`;
+      const executable = `.build/${argv.r ? "release" : "debug"}/${PackageName}`;
       const spawn = require('child_process').spawn;
       spawn(`${executable}`, [], { stdio: 'inherit' });
     });
